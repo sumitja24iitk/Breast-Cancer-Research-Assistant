@@ -1,0 +1,9 @@
+[
+  {
+    "_comment": "Phase 8 — add hand-crafted evaluation questions here.",
+    "_format": {
+      "question": "Natural-language question about breast cancer treatment",
+      "gold_pmids": ["PMID of the abstract that best answers this question"]
+    }
+  }
+]

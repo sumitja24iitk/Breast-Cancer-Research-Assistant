@@ -1,0 +1,28 @@
+# ── Embeddings ──────────────────────────────────────────────────────────────
+sentence-transformers>=2.7.0       # Wraps HuggingFace models; we use all-MiniLM-L6-v2
+
+# ── Vector store ────────────────────────────────────────────────────────────
+chromadb>=0.5.0                    # Persistent local vector DB; handles HNSW index
+
+# ── Sparse / hybrid retrieval ───────────────────────────────────────────────
+rank-bm25>=0.2.2                   # Pure-Python BM25 implementation; fast for ~2500 docs
+# Cross-encoder reranking uses a model loaded via sentence-transformers (no extra pkg)
+
+# ── LLM – Google Gemini ──────────────────────────────────────────────────────
+google-generativeai>=0.8.0         # Official Gemini Python SDK; key read from .env
+
+# ── API server ───────────────────────────────────────────────────────────────
+fastapi>=0.115.0                   # Modern, async-native web framework
+uvicorn[standard]>=0.32.0          # ASGI server that runs FastAPI
+
+# ── UI ───────────────────────────────────────────────────────────────────────
+streamlit>=1.40.0                  # Zero-boilerplate data-app UI
+
+# ── PubMed data access ───────────────────────────────────────────────────────
+biopython>=1.84                    # Provides Bio.Entrez for fetching PubMed records
+
+# ── Evaluation metrics ───────────────────────────────────────────────────────
+scikit-learn>=1.5.0                # Convenience metrics; we mainly use our own recall/MRR
+
+# ── Utilities ────────────────────────────────────────────────────────────────
+python-dotenv>=1.0.0               # Loads .env into os.environ at startup

@@ -1,0 +1,24 @@
+# Secrets — never commit
+.env
+
+# Virtual environment
+venv/
+
+# Downloaded PubMed abstracts (large; re-fetchable)
+data/
+
+# Persistent vector store (large; re-buildable)
+chroma_db/
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+
+# OS noise
+.DS_Store
+Thumbs.db
+
+# Editor state
+.vscode/
+.idea/
