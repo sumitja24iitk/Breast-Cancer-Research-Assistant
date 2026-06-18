@@ -40,12 +40,17 @@ and more honest.  It also signals to the user that they should broaden their
 search or consult a clinician, rather than acting on a fabricated answer.
 """
 
+import logging
 import os
 
+import httpx
 from dotenv import load_dotenv
 from google import genai
+from google.genai import errors as genai_errors, types as genai_types
 
 load_dotenv()  # reads .env into os.environ; safe no-op if .env is absent
+
+logger = logging.getLogger(__name__)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -56,6 +61,10 @@ load_dotenv()  # reads .env into os.environ; safe no-op if .env is absent
 # Switch to "gemini-2.5-pro" for longer / more complex reasoning tasks.
 GEMINI_MODEL = "gemini-2.5-flash"
 
+# Hard wall-clock budget for a single Gemini call.
+# HttpOptions.timeout is in milliseconds; 30 s is generous for a ~5-chunk prompt.
+GEMINI_TIMEOUT_MS = 30_000
+
 _api_key = os.getenv("GOOGLE_API_KEY")
 if not _api_key:
     raise EnvironmentError(
@@ -64,7 +73,10 @@ if not _api_key:
         "Get a free key at https://aistudio.google.com/app/apikey"
     )
 
-_gemini = genai.Client(api_key=_api_key)
+_gemini = genai.Client(
+    api_key=_api_key,
+    http_options=genai_types.HttpOptions(timeout=GEMINI_TIMEOUT_MS),
+)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -159,5 +171,30 @@ def generate_answer(question: str, retrieved_chunks: list[dict]) -> str:
     context_block = _build_context_block(retrieved_chunks)
     prompt        = _build_prompt(question, context_block)
 
-    response = _gemini.models.generate_content(model=GEMINI_MODEL, contents=prompt)
+    logger.info(
+        "Gemini call → model=%s chunks=%d prompt_chars=%d timeout=%ds",
+        GEMINI_MODEL, len(retrieved_chunks), len(prompt), GEMINI_TIMEOUT_MS // 1000,
+    )
+    try:
+        response = _gemini.models.generate_content(model=GEMINI_MODEL, contents=prompt)
+    except httpx.TimeoutException as exc:
+        # The HTTP client hit GEMINI_TIMEOUT_MS before receiving a complete response.
+        logger.error("Gemini call timed out after %ds: %s", GEMINI_TIMEOUT_MS // 1000, exc)
+        raise TimeoutError(
+            f"Gemini did not respond within {GEMINI_TIMEOUT_MS // 1000} seconds."
+        ) from exc
+    except genai_errors.ClientError as exc:
+        # 4xx from the API — most likely 429 rate-limit or 400 bad-request.
+        logger.error("Gemini client error (%s): %s", type(exc).__name__, exc)
+        raise RuntimeError(f"Gemini API rejected the request: {exc}") from exc
+    except genai_errors.ServerError as exc:
+        # 5xx from the API — Gemini overloaded or temporarily unavailable.
+        logger.error("Gemini server error (%s): %s", type(exc).__name__, exc)
+        raise RuntimeError(f"Gemini API server error: {exc}") from exc
+    except Exception as exc:
+        # Network failure, DNS error, unexpected SDK error, etc.
+        logger.error("Gemini call failed unexpectedly (%s): %s", type(exc).__name__, exc)
+        raise RuntimeError(f"Unexpected error calling Gemini: {exc}") from exc
+
+    logger.info("Gemini call ← received %d chars", len(response.text))
     return response.text.strip()

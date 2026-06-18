@@ -56,7 +56,12 @@ def answer(question: str, k: int = 5) -> dict:
 
     # Step 3 — package result; sources let the UI render clickable PMID links
     sources = [
-        {"pmid": c["pmid"], "title": c["title"], "score": c["score"]}
+        {
+            "pmid":    c["pmid"],
+            "title":   c["title"],
+            "snippet": c["text"][:300],   # first 300 chars shown as a preview
+            "score":   c["score"],
+        }
         for c in chunks
     ]
 
