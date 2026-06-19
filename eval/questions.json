@@ -1,9 +1,201 @@
 [
   {
-    "_comment": "Phase 8 — add hand-crafted evaluation questions here.",
-    "_format": {
-      "question": "Natural-language question about breast cancer treatment",
-      "gold_pmids": ["PMID of the abstract that best answers this question"]
-    }
+    "question": "What are the first-line treatments for HER2-positive metastatic breast cancer?",
+    "relevant_pmids": []
+  },
+  {
+    "question": "How is triple-negative breast cancer treated?",
+    "relevant_pmids": [
+      "41290455",
+      "41601628",
+      "41340541",
+      "41096979",
+      "41115255",
+      "41032139"
+    ]
+  },
+  {
+    "question": "What is the role of endocrine therapy in hormone receptor-positive breast cancer?",
+    "relevant_pmids": [
+      "41226361",
+      "41372410",
+      "41183342",
+      "41299751",
+      "41186970"
+    ]
+  },
+  {
+    "question": "When is neoadjuvant chemotherapy preferred over adjuvant chemotherapy?",
+    "relevant_pmids": [
+      "41385136",
+      "41265930",
+      "41036550",
+      "41217951",
+      "41124037",
+      "41214705"
+    ]
+  },
+  {
+    "question": "What are the cardiotoxic effects of trastuzumab?",
+    "relevant_pmids": [
+      "41101779",
+      "41423083",
+      "41206886",
+      "41140069",
+      "41380750",
+      "40973900"
+    ]
+  },
+  {
+    "question": "How effective are CDK4/6 inhibitors in advanced breast cancer?",
+    "relevant_pmids": [
+      "40967066",
+      "41226406",
+      "41037898",
+      "41797591",
+      "41274798",
+      "41226361"
+    ]
+  },
+  {
+    "question": "What is the role of PARP inhibitors in BRCA-mutated breast cancer?",
+    "relevant_pmids": [
+      "41155174",
+      "41308673",
+      "40973047",
+      "41285210",
+      "41459749",
+      "41213388"
+    ]
+  },
+  {
+    "question": "What are the indications for breast-conserving surgery versus mastectomy?",
+    "relevant_pmids": [
+      "41176889",
+      "41186970",
+      "40947665",
+      "40988728",
+      "41240798",
+      "41214705"
+    ]
+  },
+  {
+    "question": "How does sentinel lymph node biopsy guide breast cancer treatment?",
+    "relevant_pmids": [
+      "41251914",
+      "41136874",
+      "41389514",
+      "40976831",
+      "41237056",
+      "41233220",
+      "41137950"
+    ]
+  },
+  {
+    "question": "What is the role of immune checkpoint inhibitors in breast cancer?",
+    "relevant_pmids": [
+      "41315271",
+      "41200780",
+      "41284503",
+      "41385765",
+      "41123812",
+      "41272529",
+      "41465595"
+    ]
+  },
+  {
+    "question": "How is tamoxifen used in premenopausal women with breast cancer?",
+    "relevant_pmids": [
+      "41671466",
+      "41469704",
+      "41303742",
+      "41036998",
+      "41259728",
+      "41387082",
+      "41548317"
+    ]
+  },
+  {
+    "question": "What are the common side effects of aromatase inhibitors?",
+    "relevant_pmids": [
+      "41225545",
+      "41359087",
+      "41143489",
+      "41172892",
+      "41438121",
+      "41574871"
+    ]
+  },
+  {
+    "question": "How is HER2-low breast cancer treated?",
+    "relevant_pmids": [
+      "41239655",
+      "41296586",
+      "40947843",
+      "41167529",
+      "40976668"
+    ]
+  },
+  {
+    "question": "What is the benefit of adjuvant radiotherapy after lumpectomy?",
+    "relevant_pmids": [
+      "41100122",
+      "41033355",
+      "41621199",
+      "40960828",
+      "41270649"
+    ]
+  },
+  {
+    "question": "How are antibody-drug conjugates used in breast cancer treatment?",
+    "relevant_pmids": [
+      "41401644",
+      "41630133",
+      "41601628",
+      "41461040",
+      "41085054",
+      "41280925",
+      "41361931"
+    ]
+  },
+  {
+    "question": "What treatment options exist for hormone receptor-positive, HER2-negative metastatic breast cancer?",
+    "relevant_pmids": []
+  },
+  {
+    "question": "How is breast cancer managed during pregnancy?",
+    "relevant_pmids": []
+  },
+  {
+    "question": "What is the role of pertuzumab in HER2-positive breast cancer?",
+    "relevant_pmids": []
+  },
+  {
+    "question": "How effective is dual HER2 blockade compared to single-agent therapy?",
+    "relevant_pmids": []
+  },
+  {
+    "question": "What are the treatment strategies for brain metastases from breast cancer?",
+    "relevant_pmids": []
+  },
+  {
+    "question": "How is endocrine therapy resistance managed in breast cancer?",
+    "relevant_pmids": []
+  },
+  {
+    "question": "What is the role of chemotherapy in early-stage hormone receptor-positive breast cancer?",
+    "relevant_pmids": []
+  },
+  {
+    "question": "How is inflammatory breast cancer treated?",
+    "relevant_pmids": []
+  },
+  {
+    "question": "How does the Oncotype DX recurrence score influence chemotherapy decisions?",
+    "relevant_pmids": []
+  },
+  {
+    "question": "What are the options for managing treatment-related lymphedema?",
+    "relevant_pmids": []
   }
 ]
