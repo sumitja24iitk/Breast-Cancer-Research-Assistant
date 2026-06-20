@@ -33,7 +33,7 @@ corpus.
 
 ![System abstaining on a question outside treatment scope](docs/abstain_out_of_scope.jpeg)
 
-When asked "What causes breast cancer?" — a risk-factor question, not a treatment
+When asked "What is the prognosis for stage 3 breast cancer?" — a risk-factor question, not a treatment
 question — the retriever surfaces loosely related abstracts and Gemini correctly
 refuses rather than confabulating an answer.
 
