@@ -14,22 +14,13 @@ Run:
 import requests
 import streamlit as st
 
-# ─────────────────────────────────────────────────────────────────────────────
-# CONFIGURATION
 # Change API_BASE_URL if you deploy the backend somewhere other than localhost.
-# ─────────────────────────────────────────────────────────────────────────────
-
-API_BASE_URL = "http://127.0.0.1:8000"
+API_BASE_URL   = "http://127.0.0.1:8000"
 QUERY_ENDPOINT = f"{API_BASE_URL}/query"
 
-# How long (seconds) to wait for the API before giving up.
 # Gemini + retrieval typically takes 5–15 s; 60 s is a safe ceiling.
 REQUEST_TIMEOUT_SECONDS = 60
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# PAGE SETUP
-# ─────────────────────────────────────────────────────────────────────────────
 
 st.set_page_config(
     page_title="Breast Cancer Research Assistant",
@@ -53,12 +44,8 @@ st.markdown(
 st.divider()
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# INPUT FORM
 # Using st.form so the app only fires when the user explicitly presses Submit,
 # not on every keystroke.
-# ─────────────────────────────────────────────────────────────────────────────
-
 with st.form("query_form"):
     question = st.text_area(
         label="Your question",
@@ -66,7 +53,6 @@ with st.form("query_form"):
         height=100,
     )
 
-    # Slider to control how many abstracts feed into the answer.
     # More context can improve answer quality but also increases latency and
     # the chance of Gemini hitting its input token limit.
     k = st.slider(
@@ -81,11 +67,6 @@ with st.form("query_form"):
     submitted = st.form_submit_button("Search the literature", type="primary")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# QUERY LOGIC
-# Only runs after the user submits a non-empty question.
-# ─────────────────────────────────────────────────────────────────────────────
-
 if submitted:
     question = question.strip()
 
@@ -93,20 +74,17 @@ if submitted:
         st.warning("Please enter a question before searching.")
         st.stop()
 
-    # Show a spinner while we wait for the (potentially slow) API call.
-    with st.spinner("Searching the literature — this may take 10–20 seconds…"):
+    with st.spinner("Searching the literature — this may take 10–20 seconds..."):
         try:
             response = requests.post(
                 QUERY_ENDPOINT,
                 json={"question": question, "k": k},
                 timeout=REQUEST_TIMEOUT_SECONDS,
             )
-            # Raise an HTTPError for 4xx / 5xx status codes.
             response.raise_for_status()
             data = response.json()
 
         except requests.exceptions.ConnectionError:
-            # The server isn't running or the URL is wrong.
             st.error(
                 "**Could not reach the API — is the server running?**\n\n"
                 "Start it in a separate terminal with:\n"
@@ -122,7 +100,6 @@ if submitted:
             st.stop()
 
         except requests.exceptions.HTTPError as exc:
-            # Parse the FastAPI error detail if available.
             try:
                 detail = exc.response.json().get("detail", str(exc))
             except Exception:
@@ -134,7 +111,6 @@ if submitted:
             st.error(f"Unexpected error: {exc}")
             st.stop()
 
-    # ── RENDER ANSWER ──────────────────────────────────────────────────────────
     st.subheader("Answer")
     # st.markdown renders the inline [PMID: XXXXXXXX] citations as plain text;
     # the Sources expander below makes each PMID a clickable link.
@@ -142,8 +118,7 @@ if submitted:
 
     st.divider()
 
-    # ── RENDER SOURCES ─────────────────────────────────────────────────────────
-    sources = data.get("sources", [])
+    sources      = data.get("sources", [])
     source_count = len(sources)
 
     with st.expander(f"Sources — {source_count} abstract{'s' if source_count != 1 else ''} retrieved"):
@@ -151,11 +126,10 @@ if submitted:
             st.write("No sources were returned.")
         else:
             for i, source in enumerate(sources, start=1):
-                pmid = source.get("pmid", "")
-                title = source.get("title", "Untitled")
+                pmid    = source.get("pmid", "")
+                title   = source.get("title", "Untitled")
                 snippet = source.get("snippet", "")
 
-                # Build the clickable PubMed URL.
                 pubmed_url = f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/"
 
                 st.markdown(f"**{i}. {title}**")
@@ -167,6 +141,5 @@ if submitted:
                     # the primary reading target.
                     st.caption(snippet)
 
-                # Don't add a divider after the last source.
                 if i < source_count:
                     st.divider()

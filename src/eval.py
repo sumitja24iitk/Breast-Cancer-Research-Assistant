@@ -3,10 +3,9 @@ eval.py — Phase 8
 Evaluation harness measuring retrieval quality and answer faithfulness.
 
 CONCEPTS — read before the code
-──────────────────────────────────────────────────────────────────────────────
 
 Why measuring retrieval quality matters
-────────────────────────────────────────
+----------------------------------------
 The retriever is the first component in the pipeline.  If it misses the
 relevant abstract, the LLM never sees the evidence it needs and either
 hallucinates an answer or admits it can't help.  A great generator cannot
@@ -14,7 +13,7 @@ rescue a bad retriever.  So before trusting any answer, we must know: "how
 reliably does the retriever surface the right documents?"
 
 Hit@k vs Recall@k
-─────────────────
+------------------
   Hit@k (also called success@k):
     Binary — 1.0 if ANY gold PMID appears in the top-k results, else 0.0.
     Tells you: "what fraction of questions have ≥1 useful abstract in top-k?"
@@ -28,7 +27,7 @@ Hit@k vs Recall@k
     answer, not just one supporting abstract.
 
 MRR — Mean Reciprocal Rank
-───────────────────────────
+----------------------------
   For each question, compute the Reciprocal Rank (RR):
     RR = 1 / rank of the first gold PMID found in the retrieved list.
     Rank 1 → 1.0,  rank 5 → 0.2,  not found → 0.0.
@@ -38,7 +37,7 @@ MRR — Mean Reciprocal Rank
   context needs MRR > 0.2 (i.e., gold doc found by rank 5 on average).
 
 Faithfulness
-─────────────
+-------------
   Fraction of [PMID: XXXXXXXX] citations in the generated answer that were
   actually in the retrieved context passed to the model.  A score < 1.0 means
   the model cited papers it didn't see in context — hallucinated references,
@@ -46,14 +45,14 @@ Faithfulness
   Requires generating answers (--faithfulness flag), which calls Gemini.
 
 Why side-by-side mode comparison matters
-─────────────────────────────────────────
+-----------------------------------------
   Running both "dense" and "hybrid" on the same labeled questions produces a
   controlled experiment.  Same questions, same gold labels, only the retrieval
   strategy changes.  Any metric difference is attributable to the retrieval
   method, not the questions or the evaluation set.
 
 Usage
-─────
+------
     python src/eval.py                   # both modes, k = [5, 10]
     python src/eval.py --mode dense      # dense only
     python src/eval.py --mode hybrid     # hybrid only
@@ -61,7 +60,7 @@ Usage
     python src/eval.py --faithfulness    # also call Gemini (~30s per question)
 
 Prerequisites
-─────────────
+--------------
     eval/questions.json must contain at least one question with a non-empty
     "relevant_pmids" list.  Run  python src/label_eval.py  first.
 """
@@ -82,13 +81,9 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from retrieve import retrieve
 
-_ROOT = Path(__file__).parent.parent
+_ROOT           = Path(__file__).parent.parent
 _QUESTIONS_FILE = _ROOT / "eval" / "questions.json"
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# METRIC FUNCTIONS — each takes pre-computed lists, no I/O
-# ─────────────────────────────────────────────────────────────────────────────
 
 def hit_at_k(retrieved_pmids: list[str], gold_pmids: list[str], k: int) -> float:
     """
@@ -151,10 +146,6 @@ def faithfulness_score(answer_text: str, retrieved_pmids: list[str]) -> float:
     return sum(1 for p in cited if p in retrieved_set) / len(cited)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# EVALUATION RUNNER
-# ─────────────────────────────────────────────────────────────────────────────
-
 def run_eval(
     questions: list[dict],
     modes: list[str],
@@ -215,8 +206,8 @@ def run_eval(
         print(f"\n[{q_idx}/{n}] {question[:72]}")
 
         for mode in modes:
-            t0   = time.perf_counter()
-            hits = retrieve(question, k=retrieval_k, mode=mode)
+            t0      = time.perf_counter()
+            hits    = retrieve(question, k=retrieval_k, mode=mode)
             elapsed = time.perf_counter() - t0
 
             retrieved_pmids = [h["pmid"] for h in hits]
@@ -235,7 +226,7 @@ def run_eval(
             faith_str = ""
             if include_faithfulness:
                 rag_result = rag_answer(question, k=max(k_values), mode=mode)
-                faith = faithfulness_score(rag_result["answer"], retrieved_pmids)
+                faith      = faithfulness_score(rag_result["answer"], retrieved_pmids)
                 results[mode]["faithfulness"].append(faith)
                 faith_str = f"  faith={faith:.3f}"
 
@@ -248,10 +239,6 @@ def run_eval(
 
     return results
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# REPORT PRINTER
-# ─────────────────────────────────────────────────────────────────────────────
 
 def print_report(
     results: dict[str, dict[str, list[float]]],
@@ -316,10 +303,6 @@ def print_report(
         print("The two score types are not comparable — only the averaged metrics above are.")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# CLI ENTRY POINT
-# ─────────────────────────────────────────────────────────────────────────────
-
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Phase 8 evaluation harness — retrieval quality and faithfulness.",
@@ -352,7 +335,6 @@ def main() -> None:
     modes  = ["dense", "hybrid"] if args.mode == "both" else [args.mode]
     k_vals = sorted(set(args.k))
 
-    # ── Load questions ────────────────────────────────────────────────────────
     all_questions: list[dict] = json.loads(
         _QUESTIONS_FILE.read_text(encoding="utf-8")
     )
@@ -375,14 +357,12 @@ def main() -> None:
     print(f"\nEvaluating {len(labeled)} questions — modes={modes}  k={k_vals}")
     if args.faithfulness:
         print("Faithfulness ON — will call Gemini for each question (slow).")
-    print("Loading retrieval models …")
+    print("Loading retrieval models ...")
 
-    # ── Run ───────────────────────────────────────────────────────────────────
     t_start = time.perf_counter()
     results = run_eval(labeled, modes, k_vals, include_faithfulness=args.faithfulness)
     total   = time.perf_counter() - t_start
 
-    # ── Report ────────────────────────────────────────────────────────────────
     print_report(results, k_vals, len(labeled), args.faithfulness)
     print(f"Total wall time: {total:.1f}s\n")
 

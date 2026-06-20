@@ -3,10 +3,9 @@ generate.py — Phase 4
 Calls Google Gemini to produce a grounded, cited answer from retrieved abstracts.
 
 CONCEPTS — read before the code
-──────────────────────────────────────────────────────────────────────────────
 
 Why constraining the model to retrieved context reduces hallucination
-─────────────────────────────────────────────────────────────────────
+----------------------------------------------------------------------
 Large language models are trained to be helpful and fluent.  When asked a
 question they don't have confident knowledge about, they often "confabulate" —
 they produce text that sounds plausible and well-structured but is factually
@@ -21,7 +20,7 @@ but it can no longer invent entirely new facts because all facts must trace back
 to the provided text.
 
 Why inline PMID citations matter
-─────────────────────────────────
+----------------------------------
 Citations serve two audiences:
   1. The end user can click the PMID, read the original abstract, and verify the
      claim themselves — critical for any clinical decision support tool.
@@ -30,7 +29,7 @@ Citations serve two audiences:
      metric).  Without citations, you can only measure fluency, not accuracy.
 
 Why "I cannot answer from this literature" is the right fallback
-────────────────────────────────────────────────────────────────
+-----------------------------------------------------------------
 If the user asks about, say, lung cancer dosing and our corpus has no relevant
 abstracts, the top-k retrieved chunks will be only loosely related.  A model
 without a clear refusal instruction will try to answer anyway, cherry-picking
@@ -53,11 +52,7 @@ load_dotenv()  # reads .env into os.environ; safe no-op if .env is absent
 logger = logging.getLogger(__name__)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# CONFIGURATION
-# ─────────────────────────────────────────────────────────────────────────────
-
-# gemini-2.0-flash: stable, fast, free-tier-compatible.
+# gemini-2.5-flash: stable, fast, free-tier-compatible.
 # Switch to "gemini-2.5-pro" for longer / more complex reasoning tasks.
 GEMINI_MODEL = "gemini-2.5-flash"
 
@@ -78,10 +73,6 @@ _gemini = genai.Client(
     http_options=genai_types.HttpOptions(timeout=GEMINI_TIMEOUT_MS),
 )
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# PROMPT BUILDER
-# ─────────────────────────────────────────────────────────────────────────────
 
 def _build_context_block(chunks: list[dict]) -> str:
     """
@@ -144,10 +135,6 @@ CONTEXT:
 ANSWER:"""
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# PUBLIC API
-# ─────────────────────────────────────────────────────────────────────────────
-
 def generate_answer(question: str, retrieved_chunks: list[dict]) -> str:
     """
     Generate a grounded, cited answer from Gemini given a question and chunks.
@@ -192,7 +179,6 @@ def generate_answer(question: str, retrieved_chunks: list[dict]) -> str:
         logger.error("Gemini server error (%s): %s", type(exc).__name__, exc)
         raise RuntimeError(f"Gemini API server error: {exc}") from exc
     except Exception as exc:
-        # Network failure, DNS error, unexpected SDK error, etc.
         logger.error("Gemini call failed unexpectedly (%s): %s", type(exc).__name__, exc)
         raise RuntimeError(f"Unexpected error calling Gemini: {exc}") from exc
 

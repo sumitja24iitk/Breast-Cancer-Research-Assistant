@@ -21,10 +21,8 @@ from pydantic import BaseModel, Field
 logger = logging.getLogger(__name__)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# PYDANTIC MODELS — define the exact shape of every request and response.
+# Pydantic models define the exact shape of every request and response.
 # FastAPI reads these to validate incoming JSON and to generate /docs.
-# ─────────────────────────────────────────────────────────────────────────────
 
 class QueryRequest(BaseModel):
     """Body sent by the caller to POST /query."""
@@ -46,8 +44,8 @@ class QueryRequest(BaseModel):
 class Source(BaseModel):
     """One retrieved PubMed abstract used as RAG context."""
 
-    pmid: str = Field(..., description="PubMed identifier — use to build a link to pubmed.ncbi.nlm.nih.gov")
-    title: str = Field(..., description="Article title.")
+    pmid: str    = Field(..., description="PubMed identifier — use to build a link to pubmed.ncbi.nlm.nih.gov")
+    title: str   = Field(..., description="Article title.")
     snippet: str = Field(..., description="First ~300 characters of the abstract.")
 
 
@@ -68,14 +66,11 @@ class HealthResponse(BaseModel):
     status: str
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# STARTUP — load the embedding model and Chroma index ONCE.
-#
 # Why lifespan, not module-level import?
 #   Using FastAPI's lifespan hook makes the intent explicit: this is a
 #   deliberate startup cost, not a side-effect of importing the file.
-#   FastAPI waits for the lifespan to yield before it starts accepting
-#   requests, so by the time the first /query arrives the pipeline is warm.
+#   FastAPI waits for the lifespan to yield before accepting requests,
+#   so by the time the first /query arrives the pipeline is warm.
 #
 # What happens inside `from src.rag import answer`:
 #   Python imports src/rag.py, which imports src/retrieve.py.
@@ -84,7 +79,6 @@ class HealthResponse(BaseModel):
 #     2. opens the Chroma PersistentClient and loads the HNSW index
 #   Both are cached in the module; every subsequent call reuses them at
 #   zero re-loading cost.
-# ─────────────────────────────────────────────────────────────────────────────
 
 _answer_fn: Callable | None = None
 
@@ -92,17 +86,13 @@ _answer_fn: Callable | None = None
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _answer_fn
-    logger.info("Startup — loading RAG pipeline (model + Chroma index) …")
-    from src.rag import answer          # triggers one-time model loading
+    logger.info("Startup — loading RAG pipeline (model + Chroma index) ...")
+    from src.rag import answer      # triggers one-time model loading
     _answer_fn = answer
     logger.info("RAG pipeline ready.")
     yield
     # No teardown needed: Chroma's PersistentClient closes on garbage collection.
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# APP
-# ─────────────────────────────────────────────────────────────────────────────
 
 app = FastAPI(
     title="Breast Cancer RAG API",
@@ -114,10 +104,6 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# ENDPOINTS
-# ─────────────────────────────────────────────────────────────────────────────
 
 @app.get(
     "/health",
