@@ -24,10 +24,6 @@ from generate import generate_answer
 from retrieve import retrieve
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# PUBLIC API
-# ─────────────────────────────────────────────────────────────────────────────
-
 def answer(question: str, k: int = 5, mode: str = "hybrid") -> dict:
     """
     Full RAG pipeline: retrieve k chunks, generate a cited answer.
@@ -53,13 +49,9 @@ def answer(question: str, k: int = 5, mode: str = "hybrid") -> dict:
         "sources" : list[dict] — the retrieved chunks used as context;
                                  each has pmid, title, text, score
     """
-    # Step 1 — retrieval: embed query + keyword search → rerank → top-k chunks
-    chunks = retrieve(question, k=k, mode=mode)
-
-    # Step 2 — generation: build prompt with labelled context → call Gemini
+    chunks      = retrieve(question, k=k, mode=mode)
     answer_text = generate_answer(question, chunks)
 
-    # Step 3 — package result; sources let the UI render clickable PMID links
     sources = [
         {
             "pmid":    c["pmid"],
@@ -73,28 +65,16 @@ def answer(question: str, k: int = 5, mode: str = "hybrid") -> dict:
     return {"answer": answer_text, "sources": sources}
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# QUICK VERIFICATION — run: python src/rag.py
-# ─────────────────────────────────────────────────────────────────────────────
-
 if __name__ == "__main__":
     SAMPLE_QUESTION = "What are first-line treatments for HER2-positive breast cancer?"
 
     print(f"Question: {SAMPLE_QUESTION}\n")
-    print("Running pipeline (hybrid retrieve -> rerank -> generate) ...\n")
-
     result = answer(SAMPLE_QUESTION, k=5, mode="hybrid")
 
-    print("=" * 60)
-    print("ANSWER")
-    print("=" * 60)
+    print("\nANSWER")
     print(result["answer"])
 
-    print("\n" + "=" * 60)
-    print("SOURCES RETRIEVED (hybrid + reranked)")
-    print("=" * 60)
+    print("\nSOURCES")
     for i, src in enumerate(result["sources"], start=1):
         print(f"  [{i}] PMID {src['pmid']}  score={src['score']:+.4f}")
         print(f"       {src['title'][:80]}")
-
-    print("\nPhase 7 smoke test complete.")

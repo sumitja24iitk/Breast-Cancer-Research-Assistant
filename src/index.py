@@ -24,22 +24,14 @@ import chromadb
 from sentence_transformers import SentenceTransformer
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# CONFIGURATION
-# ─────────────────────────────────────────────────────────────────────────────
-
 EMBED_MODEL     = "all-MiniLM-L6-v2"   # 384-dim; fast on CPU; ~80 MB download
 COLLECTION_NAME = "breast_cancer"
 EMBED_BATCH     = 64                   # sentences per encode() call; fits in ~1 GB RAM
 
-ROOT_DIR    = Path(__file__).parent.parent
-DATA_FILE   = ROOT_DIR / "data" / "abstracts.json"
-CHROMA_DIR  = ROOT_DIR / "chroma_db"
+ROOT_DIR   = Path(__file__).parent.parent
+DATA_FILE  = ROOT_DIR / "data" / "abstracts.json"
+CHROMA_DIR = ROOT_DIR / "chroma_db"
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# STEP 1 — LOAD
-# ─────────────────────────────────────────────────────────────────────────────
 
 def load_abstracts(path: Path) -> list[dict]:
     """Read and return the list of abstract dicts from abstracts.json."""
@@ -49,10 +41,6 @@ def load_abstracts(path: Path) -> list[dict]:
     print(f"  Loaded {len(records):,} records.")
     return records
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# STEP 2 — EMBED
-# ─────────────────────────────────────────────────────────────────────────────
 
 def build_embed_texts(records: list[dict]) -> list[str]:
     """
@@ -98,16 +86,11 @@ def embed_in_batches(
             show_progress_bar=False,
             convert_to_numpy=True,   # returns float32 ndarray; Chroma accepts it
         )
-        # .tolist() converts each numpy row → plain Python list[float]
         all_vectors.extend(vecs.tolist())
         print("done.")
 
     return all_vectors
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# STEP 3 — STORE
-# ─────────────────────────────────────────────────────────────────────────────
 
 def store_in_chroma(
     records: list[dict],
@@ -149,7 +132,7 @@ def store_in_chroma(
         print("  Delete chroma_db/ and re-run to rebuild from scratch.")
         return
 
-    # ── Prepare parallel lists (Chroma's add() takes separate lists) ──────────
+    # Chroma's add() takes separate parallel lists.
     ids       = [r["pmid"]     for r in records]
     documents = [r["abstract"] for r in records]
     metadatas = [
@@ -162,7 +145,6 @@ def store_in_chroma(
         for r in records
     ]
 
-    # ── Add in one call — Chroma batches internally ───────────────────────────
     print(f"  Adding {len(ids):,} documents to collection '{collection_name}'...")
     collection.add(
         ids        = ids,
@@ -173,15 +155,9 @@ def store_in_chroma(
     print(f"  Done. Collection now has {collection.count():,} documents.")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# MAIN
-# ─────────────────────────────────────────────────────────────────────────────
-
 def main() -> None:
-    # ── 1. Load ───────────────────────────────────────────────────────────────
     records = load_abstracts(DATA_FILE)
 
-    # ── 2. Embed ──────────────────────────────────────────────────────────────
     print(f"\nLoading embedding model '{EMBED_MODEL}' ...")
     print(
         "  (First run downloads ~80 MB to ~/.cache/huggingface/; "
@@ -193,18 +169,12 @@ def main() -> None:
     print(f"\nEmbedding {len(texts):,} documents in batches of {EMBED_BATCH}...")
     vectors = embed_in_batches(model, texts, EMBED_BATCH)
 
-    # ── 3. Store ──────────────────────────────────────────────────────────────
     store_in_chroma(records, vectors, CHROMA_DIR, COLLECTION_NAME)
 
-    # ── Summary ───────────────────────────────────────────────────────────────
-    bar = "─" * 52
-    print(f"\n{bar}")
-    print(f"  Documents embedded   : {len(vectors):>6,}")
-    print(f"  Vector dimensions    : {len(vectors[0]):>6,}")
-    print(f"  Chroma collection    : {COLLECTION_NAME}")
-    print(f"  Persisted to         : {CHROMA_DIR}")
-    print(f"{bar}")
-    print("\nPhase 2 complete. You can now run Phase 3 (retrieve.py).")
+    print(f"\n  Documents embedded : {len(vectors):,}")
+    print(f"  Vector dimensions  : {len(vectors[0]):,}")
+    print(f"  Collection         : {COLLECTION_NAME}")
+    print(f"  Persisted to       : {CHROMA_DIR}")
 
 
 if __name__ == "__main__":

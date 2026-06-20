@@ -28,64 +28,50 @@ from dotenv import load_dotenv
 load_dotenv()  # reads .env into os.environ (safe no-op if .env is absent)
 
 
-# ────────────────────────────────────────────────────────────────────────────
-# CONFIGURATION
-# ────────────────────────────────────────────────────────────────────────────
-
 # NCBI requires an email address so they can contact you if your queries
 # cause server-side issues. It is NOT a secret — just a courtesy identifier.
-# Replace the string below with your real email before running.
-ENTREZ_EMAIL = "sumitjaincis@gmail.com"   # <-- REQUIRED: set this before running
+ENTREZ_EMAIL = "sumitjaincis@gmail.com"
 
 # Optional: get a free NCBI API key at https://www.ncbi.nlm.nih.gov/account/
 # It raises your rate limit from 3 to 10 requests/sec.
-# Set NCBI_API_KEY=your_key in .env and the line below activates it.
 NCBI_API_KEY = os.getenv("NCBI_API_KEY", "")
 
-TARGET_COUNT   = 2500   # max PMIDs to retrieve from esearch
-BATCH_SIZE     = 200    # records per efetch call (200 is a safe, stable value)
-REQUEST_DELAY  = 0.4    # seconds between HTTP requests (keeps us under 3 req/sec)
+TARGET_COUNT  = 2500   # max PMIDs to retrieve from esearch
+BATCH_SIZE    = 200    # records per efetch call (200 is a safe, stable value)
+REQUEST_DELAY = 0.4    # seconds between HTTP requests (keeps us under 3 req/sec)
 
 DATA_DIR    = Path(__file__).parent.parent / "data"
 OUTPUT_FILE = DATA_DIR / "abstracts.json"
 
 
-# ────────────────────────────────────────────────────────────────────────────
-# PUBMED SEARCH QUERY — explained in plain English
+# PubMed search query — each clause explained below.
 #
-# PubMed uses a tagged query language where each term has a [Field] suffix.
-# Here is what each clause does:
+# "breast neoplasms"[MeSH Terms]
+#     MeSH = Medical Subject Headings, a controlled vocabulary maintained
+#     by the US National Library of Medicine. Papers are manually tagged
+#     with MeSH terms after publication. Using MeSH catches synonyms that
+#     free-text search would miss: "mammary carcinoma", "breast tumor",
+#     "breast cancer" all map to "breast neoplasms".
 #
-#  "breast neoplasms"[MeSH Terms]
-#      MeSH = Medical Subject Headings, a controlled vocabulary maintained
-#      by the US National Library of Medicine. Papers are manually tagged
-#      with MeSH terms after publication. Using MeSH catches synonyms that
-#      free-text search would miss: "mammary carcinoma", "breast tumor",
-#      "breast cancer" all map to "breast neoplasms".
+# AND "therapy"[Subheading]
+#     MeSH Subheadings narrow the main heading to a specific aspect.
+#     Appending /therapy means breast neoplasms must be a major topic OF
+#     the paper AND treated/discussed in a treatment context. Without this
+#     we'd get thousands of epidemiology-only papers that happen to mention
+#     breast cancer but offer no treatment content.
 #
-#  AND "therapy"[Subheading]
-#      MeSH Subheadings narrow the main heading to a specific aspect.
-#      Appending /therapy means breast neoplasms must be a major topic OF
-#      the paper AND treated/discussed in a treatment context. Without this
-#      we'd get thousands of epidemiology-only papers that happen to mention
-#      breast cancer but offer no treatment content.
+# AND hasabstract
+#     Excludes records indexed by NCBI but lacking abstract text — common
+#     for old citations, conference abstracts, and editorial letters.
 #
-#  AND hasabstract
-#      A filter field (no brackets needed). Excludes records that were
-#      indexed by NCBI but lack abstract text — common for old citations,
-#      conference abstracts, and editorial letters.
+# AND English[lang]
+#     Our embedding model (all-MiniLM-L6-v2) was trained primarily on
+#     English text, so non-English abstracts would produce poor embeddings.
 #
-#  AND English[lang]
-#      Language filter. Our embedding model (all-MiniLM-L6-v2) was trained
-#      primarily on English text, so non-English abstracts would produce
-#      poor-quality embeddings.
-#
-#  AND ("2015/01/01"[PDAT] : "2025/12/31"[PDAT])
-#      PDAT = Publication DATe. Restricts to the last ~10 years, which keeps
-#      the corpus focused on current treatment approaches (checkpoint
-#      inhibitors, CDK4/6 inhibitors, ADCs) and avoids outdated regimens.
-# ────────────────────────────────────────────────────────────────────────────
-
+# AND ("2015/01/01"[PDAT] : "2025/12/31"[PDAT])
+#     PDAT = Publication DATe. Restricts to the last ~10 years to focus on
+#     current treatment approaches (CDK4/6 inhibitors, checkpoint inhibitors,
+#     ADCs) and avoid outdated regimens.
 SEARCH_QUERY = (
     '"breast neoplasms"[MeSH Terms] '
     'AND "therapy"[Subheading] '
@@ -94,10 +80,6 @@ SEARCH_QUERY = (
     'AND ("2015/01/01"[PDAT] : "2025/12/31"[PDAT])'
 )
 
-
-# ────────────────────────────────────────────────────────────────────────────
-# STEP 1: SEARCH — get a list of matching PMIDs
-# ────────────────────────────────────────────────────────────────────────────
 
 def search_pubmed(query: str, max_results: int) -> list[str]:
     """
@@ -115,17 +97,13 @@ def search_pubmed(query: str, max_results: int) -> list[str]:
     results = Entrez.read(handle)
     handle.close()
 
-    pmids          = results["IdList"]
-    total_in_pubmed = int(results["Count"])   # total hits in PubMed (often >> retmax)
+    pmids           = results["IdList"]
+    total_in_pubmed = int(results["Count"])
 
     print(f"  PubMed total matches : {total_in_pubmed:,}")
     print(f"  PMIDs we will fetch  : {len(pmids):,}")
     return pmids
 
-
-# ────────────────────────────────────────────────────────────────────────────
-# STEP 2: FETCH — pull full records in batches
-# ────────────────────────────────────────────────────────────────────────────
 
 def fetch_records_in_batches(pmids: list[str]) -> list[dict]:
     """
@@ -143,8 +121,8 @@ def fetch_records_in_batches(pmids: list[str]) -> list[dict]:
 
     Returns a flat list of raw Biopython article dicts.
     """
-    all_articles    = []
-    total_batches   = (len(pmids) + BATCH_SIZE - 1) // BATCH_SIZE
+    all_articles  = []
+    total_batches = (len(pmids) + BATCH_SIZE - 1) // BATCH_SIZE
 
     for batch_num, start in enumerate(range(0, len(pmids), BATCH_SIZE), start=1):
         batch_ids = pmids[start : start + BATCH_SIZE]
@@ -155,7 +133,7 @@ def fetch_records_in_batches(pmids: list[str]) -> list[dict]:
             flush=True,
         )
 
-        handle     = Entrez.efetch(
+        handle = Entrez.efetch(
             db      = "pubmed",
             id      = ",".join(batch_ids),
             rettype = "xml",
@@ -175,10 +153,6 @@ def fetch_records_in_batches(pmids: list[str]) -> list[dict]:
     return all_articles
 
 
-# ────────────────────────────────────────────────────────────────────────────
-# STEP 3: PARSE — extract fields from each raw record
-# ────────────────────────────────────────────────────────────────────────────
-
 def parse_article(article: dict) -> dict | None:
     """
     Extract our five fields from a single PubmedArticle dict.
@@ -195,9 +169,7 @@ def parse_article(article: dict) -> dict | None:
                          ├─ Title
                          └─ JournalIssue.PubDate
 
-    Returns None if:
-      - The abstract is empty/missing (we don't want empty documents in our index)
-      - The record is malformed (rare; we log and skip rather than crash)
+    Returns None if the abstract is empty/missing or the record is malformed.
     """
     try:
         medline  = article["MedlineCitation"]
@@ -207,7 +179,6 @@ def parse_article(article: dict) -> dict | None:
         title   = str(article_["ArticleTitle"])
         journal = str(article_["Journal"]["Title"])
 
-        # ── Abstract ─────────────────────────────────────────────────────────
         # PubMed abstracts come in two shapes:
         #
         #   Shape A — Plain string (most common):
@@ -225,7 +196,6 @@ def parse_article(article: dict) -> dict | None:
         raw           = abstract_node.get("AbstractText", "")
 
         if isinstance(raw, list):
-            # Structured: join labelled sections with a blank line separator
             parts = []
             for section in raw:
                 label = getattr(section, "attributes", {}).get("Label", "")
@@ -236,12 +206,11 @@ def parse_article(article: dict) -> dict | None:
             abstract = str(raw).strip()
 
         if not abstract:
-            return None   # Skip — empty abstracts are useless for retrieval
+            return None
 
-        # ── Publication year ──────────────────────────────────────────────────
         # PubDate can hold a structured date (Year/Month/Day) or a freeform
-        # MedlineDate string like "2023 Jan-Feb". We take the first 4 characters,
-        # which always gives us the year regardless of format.
+        # MedlineDate string like "2023 Jan-Feb". The first 4 characters always
+        # give us the year regardless of format.
         pub_date = article_["Journal"]["JournalIssue"]["PubDate"]
         year_raw = pub_date.get("Year") or pub_date.get("MedlineDate", "unknown")
         year     = str(year_raw)[:4]
@@ -255,38 +224,29 @@ def parse_article(article: dict) -> dict | None:
         }
 
     except (KeyError, IndexError, AttributeError) as exc:
-        # Malformed record — skip rather than crashing the whole run.
         print(f"\n    Warning: skipping malformed record ({exc})")
         return None
 
 
-# ────────────────────────────────────────────────────────────────────────────
-# MAIN
-# ────────────────────────────────────────────────────────────────────────────
-
 def main() -> None:
-    # Wire up Entrez credentials.
-    Entrez.email   = ENTREZ_EMAIL
+    Entrez.email = ENTREZ_EMAIL
     if NCBI_API_KEY:
         Entrez.api_key = NCBI_API_KEY
         print("NCBI API key detected — using 10 req/sec rate limit.")
 
-    DATA_DIR.mkdir(exist_ok=True)   # create data/ if it doesn't exist yet
+    DATA_DIR.mkdir(exist_ok=True)
 
-    # ── Step 1: search ───────────────────────────────────────────────────────
     pmids = search_pubmed(SEARCH_QUERY, TARGET_COUNT)
     if not pmids:
         print("ERROR: esearch returned 0 PMIDs. Check your query and connection.")
         return
 
-    # ── Step 2: fetch ────────────────────────────────────────────────────────
     print(f"\nFetching {len(pmids):,} records in batches of {BATCH_SIZE}...")
     raw_articles = fetch_records_in_batches(pmids)
 
-    # ── Step 3: parse and filter ─────────────────────────────────────────────
     print("\nParsing and filtering records...")
-    parsed    = []
-    skipped   = 0
+    parsed  = []
+    skipped = 0
     for raw in raw_articles:
         record = parse_article(raw)
         if record:
@@ -294,18 +254,12 @@ def main() -> None:
         else:
             skipped += 1
 
-    # ── Step 4: save ──────────────────────────────────────────────────────────
     with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
         json.dump(parsed, f, indent=2, ensure_ascii=False)
 
-    # ── Summary ───────────────────────────────────────────────────────────────
-    bar = "─" * 52
-    print(f"\n{bar}")
-    print(f"  Fetched from PubMed  : {len(raw_articles):>6,} records")
-    print(f"  Skipped (no abstract): {skipped:>6,} records")
-    print(f"  Saved to JSON        : {len(parsed):>6,} records")
-    print(f"  Output file          : {OUTPUT_FILE}")
-    print(f"{bar}")
+    print(f"\n  Fetched : {len(raw_articles):,}")
+    print(f"  Skipped : {skipped:,}")
+    print(f"  Saved   : {len(parsed):,}  →  {OUTPUT_FILE}")
 
 
 if __name__ == "__main__":

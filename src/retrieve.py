@@ -2,10 +2,9 @@
 retrieve.py — Phase 3 (dense retrieval) upgraded in Phase 7 (hybrid + rerank)
 
 CONCEPTS — read this before the code
-──────────────────────────────────────────────────────────────────────────────
 
 Why dense retrieval alone is not enough
-────────────────────────────────────────
+----------------------------------------
 Dense retrieval embeds the query into a vector and finds the nearest abstract
 vectors by cosine similarity.  It captures *semantic* similarity beautifully —
 "trastuzumab" and "HER2-targeted therapy" land close in the embedding space.
@@ -27,7 +26,7 @@ Combining both:
   • Hybrid          = better recall AND precision than either alone.
 
 What the cross-encoder reranker adds
-──────────────────────────────────────
+--------------------------------------
 Initial retrieval (dense or BM25) scores each document *independently* of the
 others — the query and document never "see" each other at full attention depth.
 A bi-encoder like all-MiniLM-L6-v2 compresses each text to a single 384-d
@@ -42,7 +41,7 @@ The catch: it is O(n) — you can't pre-compute anything.  So we use it only
 to *rerank a small candidate set* (≤40 docs), not to score the full corpus.
 
 Why making the mode switchable matters for evaluation
-──────────────────────────────────────────────────────
+------------------------------------------------------
 Phase 8 measures recall@k and MRR: does the correct abstract appear in the
 top-k results?  To know whether hybrid+rerank actually *helps*, we need to
 compare it against the dense-only baseline on the same set of questions.
@@ -50,19 +49,18 @@ A `mode` parameter lets the eval harness call retrieve() twice — once per
 mode — on the same query and produce a side-by-side table.
 
 Why the query must be embedded with the SAME model used for indexing
-────────────────────────────────────────────────────────────────────
+---------------------------------------------------------------------
 Every embedding model defines its own "semantic space".  Indexing with one
 model and querying with another produces vectors in incompatible coordinate
 systems — the cosine similarity you compute is meaningless.
 Rule: index model == query model, always.
 
 How Chroma distances relate to similarity scores
-─────────────────────────────────────────────────
+-------------------------------------------------
 Chroma returns *cosine distance* = 1 − cosine_similarity.
 We convert: score = 1 − distance, so higher score = better match ∈ [0, 1].
 Cross-encoder scores are raw logits (any float); higher = more relevant.
-The two score types are NOT comparable across modes — document this clearly
-when you interpret evaluation numbers.
+The two score types are NOT comparable across modes.
 """
 
 from __future__ import annotations
@@ -74,28 +72,20 @@ from rank_bm25 import BM25Okapi
 from sentence_transformers import CrossEncoder, SentenceTransformer
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# CONFIGURATION CONSTANTS
-# ─────────────────────────────────────────────────────────────────────────────
-
 _ROOT         = Path(__file__).parent.parent
 _CHROMA_DIR   = _ROOT / "chroma_db"
 _EMBED_MODEL  = "all-MiniLM-L6-v2"                      # MUST match index.py
 _COLLECTION   = "breast_cancer"                          # MUST match index.py
 _RERANK_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"  # ms-marco = web passage ranking
 
-# How many candidates each method contributes before reranking.
-# Dense top-20 + BM25 top-20 → up to 40 unique candidates → reranked → top-k returned.
+# Dense top-20 + BM25 top-20 → up to 40 unique candidates → reranked → top-k.
 # Raising this number improves recall at the cost of reranker latency.
 _HYBRID_CANDIDATE_K = 20
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# MODULE-LEVEL INITIALISATION — all of this runs ONCE when the module is first
-# imported.  Every subsequent call reuses the already-loaded objects.
-# ─────────────────────────────────────────────────────────────────────────────
+# Models and indexes are loaded once at module import time. Every subsequent
+# call to retrieve() reuses the already-loaded objects at zero re-loading cost.
 
-# ── 1. Dense bi-encoder + Chroma (Phase 3, unchanged) ─────────────────────
 print(f"[retrieve] Loading embedding model '{_EMBED_MODEL}' ...")
 _model: SentenceTransformer = SentenceTransformer(_EMBED_MODEL)
 
@@ -104,35 +94,26 @@ _client: chromadb.PersistentClient = chromadb.PersistentClient(path=str(_CHROMA_
 _collection = _client.get_collection(name=_COLLECTION)
 print(f"[retrieve] Chroma ready — {_collection.count():,} documents indexed.")
 
-# ── 2. BM25 keyword index (Phase 7) ───────────────────────────────────────
-# We pull ALL documents out of Chroma once to build the in-memory BM25 index.
-# This is a one-time O(n) cost at startup: for 2,500 abstracts it takes <2 s
-# and uses ~50 MB RAM — well worth it for every subsequent fast keyword lookup.
-#
-# Simple whitespace tokenisation is enough here: BM25 is robust to it, and
-# lowercasing is the only normalisation we need for clinical keyword matching.
+# Pull all documents from Chroma once to build the in-memory BM25 index.
+# One-time O(n) cost at startup: for 2,500 abstracts <2 s and ~50 MB RAM,
+# worth it for every subsequent fast keyword lookup.
 print("[retrieve] Fetching all documents from Chroma to build BM25 index ...")
 _corpus = _collection.get(include=["documents", "metadatas"])
-_all_texts: list[str] = _corpus["documents"]    # abstract text, one per row
-_all_metas: list[dict] = _corpus["metadatas"]   # {pmid, title, year, journal, ...}
+_all_texts: list[str] = _corpus["documents"]
+_all_metas: list[dict] = _corpus["metadatas"]
 
 _tokenized_corpus: list[list[str]] = [text.lower().split() for text in _all_texts]
 _bm25: BM25Okapi = BM25Okapi(_tokenized_corpus)
 print(f"[retrieve] BM25 index built over {len(_all_texts):,} documents.")
 
-# ── 3. Cross-encoder reranker (Phase 7) ───────────────────────────────────
 # ms-marco-MiniLM-L-6-v2 was fine-tuned on the MS MARCO passage-ranking
-# dataset (~500 k query-passage pairs from Bing search).  It generalises well
+# dataset (~500 k query-passage pairs from Bing search). It generalises well
 # to biomedical text for re-ranking short passages like PubMed abstracts.
 # Loading takes ~1–2 s and ~100 MB RAM.
 print(f"[retrieve] Loading cross-encoder reranker '{_RERANK_MODEL}' ...")
 _reranker: CrossEncoder = CrossEncoder(_RERANK_MODEL)
-print("[retrieve] Reranker ready.  All models loaded.")
+print("[retrieve] Reranker ready. All models loaded.")
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# PRIVATE HELPERS
-# ─────────────────────────────────────────────────────────────────────────────
 
 def _bm25_retrieve(query: str, k: int) -> list[dict]:
     """
@@ -152,10 +133,8 @@ def _bm25_retrieve(query: str, k: int) -> list[dict]:
     list[dict] — same shape as dense_retrieve: pmid, title, text, score
     """
     tokenized_query = query.lower().split()
-    # get_scores() returns a float array of length = corpus size
-    scores = _bm25.get_scores(tokenized_query)
+    scores          = _bm25.get_scores(tokenized_query)
 
-    # argsort descending: indices of documents ranked by BM25 score
     top_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[:k]
 
     hits = []
@@ -171,10 +150,6 @@ def _bm25_retrieve(query: str, k: int) -> list[dict]:
     return hits
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# PUBLIC API
-# ─────────────────────────────────────────────────────────────────────────────
-
 def dense_retrieve(query: str, k: int = 5) -> list[dict]:
     """
     Embed *query* and return the top-k most similar documents from Chroma.
@@ -185,8 +160,7 @@ def dense_retrieve(query: str, k: int = 5) -> list[dict]:
         A natural-language clinical question, e.g.
         "What are treatment options for HER2-positive breast cancer?"
     k : int
-        Number of results to return.  See module docstring for the recall/noise
-        trade-off discussion.
+        Number of results to return.
 
     Returns
     -------
@@ -196,31 +170,23 @@ def dense_retrieve(query: str, k: int = 5) -> list[dict]:
         text    : str   — abstract text (the passage passed to the LLM)
         score   : float — cosine similarity in [0, 1]; higher = more relevant
     """
-    # Step 1 — embed the query with the SAME model used during indexing.
-    # encode() returns a (384,) float32 ndarray; .tolist() converts to plain Python
-    # list[float] which is what chromadb.Collection.query() expects.
+    # Embed with the same model used during indexing — mixing models produces
+    # vectors in incompatible spaces and makes cosine similarity meaningless.
     query_vec: list[float] = _model.encode(query, convert_to_numpy=True).tolist()
 
-    # Step 2 — ask Chroma for the k nearest neighbours by cosine distance.
-    # include= controls what Chroma sends back; we need documents (abstract text),
-    # metadatas (title, pmid, year, journal), and distances (to compute scores).
     results = _collection.query(
         query_embeddings=[query_vec],   # outer list = batch of 1 query
         n_results=k,
         include=["documents", "metadatas", "distances"],
     )
 
-    # Step 3 — unpack Chroma's response.
-    # Chroma returns batch-indexed lists (results["documents"][0] = list for
-    # the first query in the batch).  We sent one query, so index [0] everywhere.
+    # Chroma returns batch-indexed lists (results["documents"][0] for the first
+    # query in the batch). We sent one query, so index [0] everywhere.
     docs      = results["documents"][0]
     metadatas = results["metadatas"][0]
     distances = results["distances"][0]
 
-    # Step 4 — convert distances → similarity scores and build clean dicts.
-    # Chroma cosine distance = 1 − cosine_similarity, so:
-    #   distance 0.0 → score 1.0 (perfect match)
-    #   distance 1.0 → score 0.0 (unrelated)
+    # Chroma cosine distance = 1 − cosine_similarity, so higher score = better match.
     hits = []
     for doc, meta, dist in zip(docs, metadatas, distances):
         hits.append(
@@ -267,46 +233,36 @@ def retrieve(query: str, k: int = 5, mode: str = "hybrid") -> list[dict]:
         return dense_retrieve(query, k=k)
 
     if mode == "hybrid":
-        # ── Step 1: gather a broad candidate pool from both methods ──────────
-        # Each method contributes its top-_HYBRID_CANDIDATE_K documents.
-        # We cast a wider net here so the reranker has more to choose from;
+        # Gather a broad candidate pool from both methods. Each contributes
+        # _HYBRID_CANDIDATE_K docs so the reranker has more to choose from;
         # the final top-k is carved out after reranking.
         dense_hits = dense_retrieve(query, k=_HYBRID_CANDIDATE_K)
         bm25_hits  = _bm25_retrieve(query, k=_HYBRID_CANDIDATE_K)
 
-        # ── Step 2: merge and deduplicate by PMID ────────────────────────────
-        # When both methods surface the same abstract (common for highly
-        # relevant papers), we keep only the first occurrence.  The scores at
-        # this stage are different scales (cosine vs. BM25), so we discard them
-        # and let the cross-encoder assign the definitive score.
+        # Merge and deduplicate by PMID. When both methods surface the same
+        # abstract we keep the first occurrence; initial scores are on different
+        # scales (cosine vs BM25) so we discard them and let the cross-encoder
+        # assign the definitive relevance score.
         seen: dict[str, dict] = {}
         for hit in dense_hits + bm25_hits:
             if hit["pmid"] not in seen:
                 seen[hit["pmid"]] = hit
         candidates = list(seen.values())
 
-        # ── Step 3: cross-encoder reranking ───────────────────────────────────
         # The cross-encoder sees each [query, document] pair as a single
-        # sequence and outputs a relevance logit.  We batch all candidates in
-        # one predict() call so the GPU/CPU pipeline is used efficiently.
+        # sequence and outputs a relevance logit — more accurate than the
+        # bi-encoder but O(n), so we only run it on the small candidate pool.
         pairs: list[list[str]] = [[query, c["text"]] for c in candidates]
-        rerank_scores = _reranker.predict(pairs)  # ndarray of shape (n_candidates,)
+        rerank_scores = _reranker.predict(pairs)
 
         for candidate, score in zip(candidates, rerank_scores):
             candidate["score"] = round(float(score), 4)
 
-        # ── Step 4: sort by rerank score and return top k ─────────────────────
         candidates.sort(key=lambda x: x["score"], reverse=True)
         return candidates[:k]
 
     raise ValueError(f"Unknown retrieval mode '{mode}'. Choose 'dense' or 'hybrid'.")
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# QUICK VERIFICATION — run: python src/retrieve.py
-# Prints top-5 results for two term-heavy queries in BOTH modes so you can
-# visually compare dense-only vs hybrid+rerank side by side.
-# ─────────────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     TEST_QUERIES = [
@@ -315,19 +271,13 @@ if __name__ == "__main__":
     ]
 
     for query in TEST_QUERIES:
-        print(f"\n{'═' * 70}")
-        print(f"QUERY: {query}")
-        print("═" * 70)
-
+        print(f"\nQUERY: {query}")
         for mode in ("dense", "hybrid"):
-            hits = retrieve(query, k=5, mode=mode)
+            hits        = retrieve(query, k=5, mode=mode)
             score_label = "cosine" if mode == "dense" else "rerank logit"
-            print(f"\n  ── Mode: {mode.upper():6s}  (score = {score_label}) ──")
+            print(f"\n  [{mode.upper()}]  score = {score_label}")
             for rank, hit in enumerate(hits, start=1):
                 print(
                     f"    #{rank}  PMID {hit['pmid']}  score={hit['score']:+.4f}\n"
                     f"         {hit['title'][:65]}"
                 )
-
-    print(f"\n{'═' * 70}")
-    print("Phase 7 smoke test complete.")
